@@ -5,3 +5,4 @@ llama-index-vector-stores-chroma>=0.6,<0.7
 chromadb
 python-dotenv
 huggingface-hub
+pandas>=2.2
