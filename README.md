@@ -59,3 +59,43 @@ Assume a user has a monthly income of **6,000 EGP** and wants to save **20% (1,2
 ## Status
 
 **Design/documentation prototype.** Implementation, integrations, authentication, and testing would be separate future phases.
+
+
+---
+
+## 5. LlamaIndex implementation
+
+The repository now also includes a runnable **LlamaIndex implementation prototype**, adapted from the supplied `02_llamaindex_agents` course notebook.
+
+### Framework concepts used
+
+| Course notebook concept | SpendSmart implementation |
+|---|---|
+| `HuggingFaceInferenceAPI` | Connects the agent to a Hugging Face-hosted inference model |
+| `ReActAgent` | Reasons about the request and selects tools |
+| `FunctionTool` | Exposes finance functions to the agent |
+| `SimpleDirectoryReader` | Loads financial education documents |
+| `HuggingFaceEmbedding` | Embeds the knowledge documents |
+| `ChromaVectorStore` | Persists document vectors locally |
+| `QueryEngineTool` | Lets the agent retrieve general budgeting guidance |
+
+### Added implementation files
+
+- `spendsmart_agent.py` — agent, finance tools, local CSV analysis, and RAG setup.
+- `requirements.txt` — Python dependencies aligned with the notebook's LlamaIndex package versions.
+- `.env.example` — safe configuration template; add your own token to a local `.env` file.
+- `data/transactions.csv` — fictional sample transactions for testing.
+- `data/budgets.json` — example monthly category limits.
+- `knowledge/financial_guidance.md` — sample knowledge source indexed by Chroma.
+- `docs/06_llamaindex_implementation.md` — setup instructions and explanation.
+
+### Run locally
+
+1. Create and activate a Python virtual environment.
+2. Install dependencies: `pip install -r requirements.txt`.
+3. Copy `.env.example` to `.env` and add your own Hugging Face token.
+4. Run: `python spendsmart_agent.py "Analyze my November 2026 spending and help me save 20% of a 6000 EGP monthly income"`.
+
+The default model follows the supplied notebook's Hugging Face example. If that model is not available through your account's Inference Providers, set `HF_LLM_MODEL` to an available model. The agent uses a ReAct loop, matching the notebook's explanation that this Hugging Face integration is not configured as a function-calling model by default.
+
+**Prototype boundary:** this version reads a local CSV and JSON budget file only. It does not connect to a bank, transfer money, execute payments, or edit budgets. The sample transactions and budget values are fictional.
