@@ -1,0 +1,12 @@
+{
+  "currency": "EGP",
+  "monthly_limits": {
+    "food": 1400,
+    "transportation": 500,
+    "education": 1000,
+    "shopping": 600,
+    "subscriptions": 200,
+    "healthcare": 400,
+    "other": 500
+  }
+}
