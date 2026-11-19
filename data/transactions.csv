@@ -1,0 +1,26 @@
+transaction_id,date,merchant,amount,description,transaction_type,currency
+TX001,2026-11-01,University Bookstore,850,Engineering textbooks,expense,EGP
+TX002,2026-11-02,Metro,35,Transportation,expense,EGP
+TX003,2026-11-03,Monthly Allowance,6000,Monthly income,income,EGP
+TX004,2026-11-04,Campus Cafe,95,Coffee and sandwich,expense,EGP
+TX005,2026-11-05,Supermarket,620,Groceries,expense,EGP
+TX006,2026-11-07,Streaming Service,150,Monthly subscription,expense,EGP
+TX007,2026-11-09,Ride App,120,Transportation,expense,EGP
+TX008,2026-11-11,Restaurant,340,Dinner,expense,EGP
+TX009,2026-11-13,Pharmacy,180,Personal care,expense,EGP
+TX010,2026-11-15,Clothing Store,950,Clothes,expense,EGP
+TX011,2026-11-17,Supermarket,540,Groceries,expense,EGP
+TX012,2026-11-18,Metro,35,Transportation,expense,EGP
+TX013,2026-10-03,Monthly Allowance,6000,Monthly income,income,EGP
+TX014,2026-10-05,Supermarket,590,Groceries,expense,EGP
+TX015,2026-10-08,Metro,30,Transportation,expense,EGP
+TX016,2026-10-12,Restaurant,220,Dinner,expense,EGP
+TX017,2026-10-16,Streaming Service,150,Monthly subscription,expense,EGP
+TX018,2026-10-20,Supermarket,610,Groceries,expense,EGP
+TX019,2026-10-25,Ride App,95,Transportation,expense,EGP
+TX020,2026-09-03,Monthly Allowance,6000,Monthly income,income,EGP
+TX021,2026-09-06,Supermarket,570,Groceries,expense,EGP
+TX022,2026-09-09,Metro,30,Transportation,expense,EGP
+TX023,2026-09-14,Restaurant,250,Dinner,expense,EGP
+TX024,2026-09-18,Streaming Service,150,Monthly subscription,expense,EGP
+TX025,2026-09-22,Ride App,90,Transportation,expense,EGP
