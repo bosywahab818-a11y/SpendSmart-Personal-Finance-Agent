@@ -279,7 +279,7 @@ def generate_financial_report(start_date: str, end_date: str) -> str:
     }, ensure_ascii=False)
 
 
-def build_knowledge_tool():
+def build_knowledge_tool(llm):
     """Build a Chroma-backed LlamaIndex RAG query tool for general budgeting guidance."""
     import chromadb
     from llama_index.core import SimpleDirectoryReader, VectorStoreIndex
@@ -302,7 +302,10 @@ def build_knowledge_tool():
         index = VectorStoreIndex.from_vector_store(
             vector_store, embed_model=embed_model
         )
-    query_engine = index.as_query_engine(similarity_top_k=3)
+    query_engine = index.as_query_engine(
+    llm=llm,
+    similarity_top_k=3
+)
     return QueryEngineTool.from_defaults(
         query_engine=query_engine,
         name="budgeting_knowledge",
@@ -318,18 +321,19 @@ def build_agent():
     """Create the LlamaIndex ReAct agent using the notebook's Hugging Face pattern."""
     from llama_index.core.agent.workflow import ReActAgent
     from llama_index.core.tools import FunctionTool
-    from llama_index.llms.huggingface_api import HuggingFaceInferenceAPI
+    from llama_index.llms.groq import Groq
 
-    token = os.getenv("HF_TOKEN")
-    if not token:
-        raise EnvironmentError("Set HF_TOKEN in your environment or .env file first.")
+    groq_api_key = os.getenv("GROQ_API_KEY")
 
-    llm = HuggingFaceInferenceAPI(
-        model=LLM_MODEL,
-        token=token,
-        provider="auto",
+    if not groq_api_key:
+        raise EnvironmentError(
+            "Set GROQ_API_KEY in your .env file first."
+        )
+
+    llm = Groq(
+        model="openai/gpt-oss-120b",
+        api_key=groq_api_key,
         temperature=0.2,
-        num_output=700,
     )
     functions = [
         retrieve_transactions,
@@ -341,7 +345,7 @@ def build_agent():
         generate_financial_report,
     ]
     tools = [FunctionTool.from_defaults(fn=fn) for fn in functions]
-    tools.append(build_knowledge_tool())
+    tools.append(build_knowledge_tool(llm))
 
     system_prompt = """
 You are SpendSmart, a careful personal finance analysis assistant.
