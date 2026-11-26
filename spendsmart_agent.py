@@ -325,15 +325,16 @@ def build_knowledge_tool(llm):
 
 def build_agent():
     """Build the SpendSmart supervisor and its specialised finance workers."""
+    # Fail fast with a useful setup message before importing optional AI packages.
+    groq_api_key = os.getenv("GROQ_API_KEY")
+    if not groq_api_key:
+        raise EnvironmentError("Set GROQ_API_KEY in your .env file first.")
+
     from langchain.agents import create_agent
     from langchain_groq import ChatGroq
     from langgraph.checkpoint.memory import InMemorySaver
     from langgraph_supervisor import create_supervisor
     from llama_index.llms.groq import Groq
-
-    groq_api_key = os.getenv("GROQ_API_KEY")
-    if not groq_api_key:
-        raise EnvironmentError("Set GROQ_API_KEY in your .env file first.")
 
     model_name = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
     model = ChatGroq(
