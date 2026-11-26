@@ -66,7 +66,10 @@ def _period(start_date: str, end_date: str) -> tuple[pd.Timestamp, pd.Timestamp]
 
 def _filter_period(df: pd.DataFrame, start_date: str, end_date: str) -> pd.DataFrame:
     start, end = _period(start_date, end_date)
-    return df[(df["date"] >= start) & (df["date"] <= end)].copy()
+    # Treat end_date as a calendar date and include every transaction on that day,
+    # including timestamps later than midnight.
+    end_exclusive = end + pd.Timedelta(days=1)
+    return df[(df["date"] >= start) & (df["date"] < end_exclusive)].copy()
 
 
 def _category(merchant: str, description: str) -> str:
