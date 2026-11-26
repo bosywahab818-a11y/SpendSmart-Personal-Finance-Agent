@@ -15,9 +15,12 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
-      - name: Install test dependencies
-        run: python -m pip install --upgrade pip pandas python-dotenv
+      - name: Install project dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt
       - name: Compile application
         run: python -m compileall -q spendsmart_agent.py
-      - name: Run finance-tool tests
+      - name: Verify AI/RAG dependency imports
+        run: |
+          python -c "from langchain.agents import create_agent; from langchain_groq import ChatGroq; from langgraph.checkpoint.memory import InMemorySaver; from langgraph_supervisor import create_supervisor; from llama_index.llms.groq import Groq; from llama_index.embeddings.huggingface import HuggingFaceEmbedding; from llama_index.vector_stores.chroma import ChromaVectorStore; import chromadb; print('AI and RAG dependencies imported successfully')"
+      - name: Run finance and multi-agent tests
         run: python -m unittest discover -s tests -v
