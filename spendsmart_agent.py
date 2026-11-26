@@ -116,38 +116,119 @@ def categorize_transactions(start_date: str, end_date: str) -> str:
     )
 
 
+
 def calculate_financial_metrics(
     start_date: str,
     end_date: str,
     reported_monthly_income: float | None = None,
 ) -> str:
-    """Calculate income, expenses, balance, savings rate, and category totals for ISO dates."""
-    df = _filter_period(_load_transactions(), start_date, end_date)
-    income = float(df.loc[df.transaction_type == "income", "amount"].sum())
+    """Calculate financial metrics and disclose the actual CSV date coverage."""
+
+    # Load all available transactions.
+    all_df = _load_transactions()
+
+    # Filter transactions to the requested period.
+    df = _filter_period(all_df, start_date, end_date)
+
+    # Calculate the actual date coverage of the entire CSV.
+    if not all_df.empty:
+        available_start = all_df["date"].min().strftime("%Y-%m-%d")
+        available_end = all_df["date"].max().strftime("%Y-%m-%d")
+
+        requested_start = pd.Timestamp(start_date)
+        requested_end = pd.Timestamp(end_date)
+
+        within_available_range = (
+            requested_start >= all_df["date"].min().normalize()
+            and requested_end <= all_df["date"].max().normalize()
+        )
+
+        available_period = {
+            "start_date": available_start,
+            "end_date": available_end,
+        }
+    else:
+        within_available_range = False
+        available_period = None
+
+    # Calculate the actual date range of matching transactions.
+    if not df.empty:
+        period_data = {
+            "start_date": df["date"].min().strftime("%Y-%m-%d"),
+            "end_date": df["date"].max().strftime("%Y-%m-%d"),
+        }
+    else:
+        period_data = None
+
+    # Calculate income and expenses.
+    income = float(
+        df.loc[df.transaction_type == "income", "amount"].sum()
+    )
+
     expenses_df = df[df.transaction_type == "expense"].copy()
     expenses = float(expenses_df["amount"].sum())
+
     balance = income - expenses
     savings_rate = (balance / income) if income > 0 else None
+
+    # Categorize expenses.
     expenses_df["category"] = expenses_df.apply(
-        lambda row: _category(str(row["merchant"]), str(row["description"])), axis=1
+        lambda row: _category(
+            str(row["merchant"]),
+            str(row["description"])
+        ),
+        axis=1,
     )
-    category_totals = expenses_df.groupby("category")["amount"].sum().to_dict()
+
+    category_totals = (
+        expenses_df.groupby("category")["amount"].sum().to_dict()
+    )
+
+    # Build the result.
     result: dict[str, Any] = {
-        "period": {"start_date": start_date, "end_date": end_date},
-        "currency": sorted(df.currency.dropna().astype(str).unique().tolist()),
+        "requested_period": {
+            "start_date": start_date,
+            "end_date": end_date,
+        },
+        "available_data_period": available_period,
+        "period_data_period": period_data,
+        "requested_period_within_available_date_range": (
+            bool(within_available_range)
+        ),
+        "coverage_warning": (
+            "The CSV date range does not establish that every transaction "
+            "during the requested period is present. Financial totals "
+            "represent only the records available in the CSV."
+        ),
+        "currency": sorted(
+            df.currency.dropna().astype(str).unique().tolist()
+        ),
         "transaction_income_total": round(income, 2),
         "total_expenses": round(expenses, 2),
         "remaining_balance": round(balance, 2),
-        "savings_rate": round(savings_rate, 4) if savings_rate is not None else None,
-        "category_totals": {k: round(float(v), 2) for k, v in category_totals.items()},
+        "savings_rate": (
+            round(savings_rate, 4)
+            if savings_rate is not None
+            else None
+        ),
+        "category_totals": {
+            key: round(float(value), 2)
+            for key, value in category_totals.items()
+        },
         "transaction_count": int(len(df)),
+        "available_transaction_count": int(len(all_df)),
     }
+
     if reported_monthly_income is not None:
-        result["user_reported_monthly_income"] = float(reported_monthly_income)
-        result["income_note"] = "Reported income is shown separately from transaction-derived income."
+        result["user_reported_monthly_income"] = float(
+            reported_monthly_income
+        )
+        result["income_note"] = (
+            "Reported income is shown separately from "
+            "transaction-derived income."
+        )
+
     return json.dumps(result, ensure_ascii=False)
-
-
 def detect_spending_anomalies(start_date: str, end_date: str) -> str:
     """Flag possible duplicate or unusually large expenses; flags are not fraud determinations."""
     df = _load_transactions()
@@ -197,37 +278,141 @@ def detect_spending_anomalies(start_date: str, end_date: str) -> str:
     }, ensure_ascii=False)
 
 
+
 def evaluate_budget(start_date: str, end_date: str) -> str:
-    """Compare expenses in the selected dates with configured monthly category limits."""
+    """Compare observed expenses with monthly limits prorated to the observed date range."""
+
     if not BUDGETS_PATH.exists():
         return json.dumps({"status": "budget_not_configured"})
+
     budget = json.loads(BUDGETS_PATH.read_text(encoding="utf-8"))
-    df = _filter_period(_load_transactions(), start_date, end_date)
-    expenses = df[df.transaction_type == "expense"].copy()
-    expenses["category"] = expenses.apply(
-        lambda row: _category(str(row.merchant), str(row.description)), axis=1
+
+    df = _filter_period(
+        _load_transactions(),
+        start_date,
+        end_date
     )
-    actual = expenses.groupby("category").amount.sum().to_dict()
+
     limits = budget.get("monthly_limits", {})
+
+    if df.empty:
+        return json.dumps({
+            "status": "no_transactions_in_requested_period",
+            "requested_period": {
+                "start_date": start_date,
+                "end_date": end_date,
+            },
+            "note": "No transactions were found in the requested period."
+        }, ensure_ascii=False)
+
+    observed_start = df["date"].min().normalize()
+    observed_end = df["date"].max().normalize()
+
+    # Calculate the fraction of each calendar month covered
+    # by the observed transaction date range.
+    month_equivalent = 0.0
+    current_month = observed_start.replace(day=1)
+
+    while current_month <= observed_end:
+        month_end = current_month + pd.offsets.MonthEnd(0)
+
+        overlap_start = max(observed_start, current_month)
+        overlap_end = min(observed_end, month_end)
+
+        if overlap_start <= overlap_end:
+            covered_days = (overlap_end - overlap_start).days + 1
+            month_equivalent += covered_days / current_month.days_in_month
+
+        current_month += pd.offsets.MonthBegin(1)
+
+    expenses = df[df.transaction_type == "expense"].copy()
+
+    expenses["category"] = expenses.apply(
+        lambda row: _category(
+            str(row.merchant),
+            str(row.description)
+        ),
+        axis=1
+    )
+
+    actual = expenses.groupby("category").amount.sum().to_dict()
+
     results = {}
     exceeded = []
-    for category, limit in limits.items():
+
+    for category, monthly_limit in limits.items():
         spent = float(actual.get(category, 0))
-        limit = float(limit)
+        monthly_limit = float(monthly_limit)
+
+        prorated_limit = monthly_limit * month_equivalent
+        remaining = prorated_limit - spent
+
+        utilization = (
+            spent / prorated_limit
+            if prorated_limit > 0
+            else None
+        )
+
         results[category] = {
             "spent": round(spent, 2),
-            "limit": round(limit, 2),
-            "remaining": round(limit - spent, 2),
-            "utilization_rate": round(spent / limit, 4) if limit > 0 else None,
+            "monthly_limit": round(monthly_limit, 2),
+            "prorated_limit_for_observed_period": round(
+                prorated_limit, 2
+            ),
+            "remaining": round(remaining, 2),
+            "utilization_rate": (
+                round(utilization, 4)
+                if utilization is not None
+                else None
+            ),
+            "status": (
+                "over_budget"
+                if spent > prorated_limit
+                else "within_budget"
+            ),
         }
-        if spent > limit:
+
+        if spent > prorated_limit:
             exceeded.append(category)
+
+    requested_start, requested_end = _period(
+        start_date,
+        end_date
+    )
+
+    coverage_complete = (
+        observed_start <= requested_start
+        and observed_end >= requested_end
+    )
+
+    if exceeded:
+        status = "over_budget_in_observed_period"
+    else:
+        status = "within_observed_budget_limits"
+
     return json.dumps({
         "currency": budget.get("currency", "unspecified"),
+        "requested_period": {
+            "start_date": start_date,
+            "end_date": end_date,
+        },
+        "observed_transaction_period": {
+            "start_date": observed_start.strftime("%Y-%m-%d"),
+            "end_date": observed_end.strftime("%Y-%m-%d"),
+        },
+        "requested_period_boundary_coverage": coverage_complete,
+        "observed_period_month_equivalent": round(
+            month_equivalent, 4
+        ),
         "category_results": results,
         "exceeded_categories": exceeded,
-        "status": "over_budget" if exceeded else "within_configured_limits",
-        "note": "Configured limits are examples and should be confirmed by the user.",
+        "status": status,
+        "note": (
+            "Monthly limits are example values and should be confirmed "
+            "by the user. Limits are prorated to the observed transaction "
+            "date range. The date range does not prove that every "
+            "transaction is present. Results describe available records only."
+        ),
     }, ensure_ascii=False)
 
 

@@ -80,3 +80,11 @@ SpendSmart can autonomously analyze authorized data and prepare recommendations.
 - Connecting a new financial data source or expanding access permissions.
 
 The proposed tools are read-only or recommendation-only. No payment, transfer, or purchase tool is included.
+
+## 4.5 Multi-agent implementation
+
+The executable multi-agent version is documented in [07_multi_agent_supervisor.md](07_multi_agent_supervisor.md) and implemented in `spendsmart_multi_agent.py`.
+
+The supervisor delegates to five focused workers: transaction retrieval/categorization, financial analysis, budget evaluation, savings planning, and financial education. Each worker owns a narrow set of tools and returns its findings to the supervisor. The supervisor combines only the verified results needed for the user's request.
+
+This implementation reuses the existing finance functions in `spendsmart_agent.py`; it does not duplicate their calculations. The original single-agent/LlamaIndex implementation remains available as a baseline.
