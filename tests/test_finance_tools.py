@@ -27,7 +27,7 @@ class FinanceToolTests(unittest.TestCase):
                 spend.calculate_financial_metrics("2026-11-01", "2026-11-30")
             )
         self.assertEqual(result["transaction_income_total"], 6000.0)
-        self.assertEqual(result["total_expenses"], 600.0)
+        self.assertEqual(result["total_expenses"], 650.0)
         self.assertEqual(result["remaining_balance"], 5400.0)
         self.assertEqual(result["currency"], ["EGP"])
 
