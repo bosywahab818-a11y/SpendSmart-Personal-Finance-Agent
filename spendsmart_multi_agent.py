@@ -112,7 +112,7 @@ def search_budgeting_knowledge(query: str) -> str:
 
     Use this for general financial education, not for facts about the user's transactions.
     """
-    result = get_knowledge_tool().call(query_str=query)
+    result = get_knowledge_tool().call(query)
     return str(getattr(result, "content", result))
 
 
