@@ -131,7 +131,8 @@ class MultiAgentArchitectureTests(unittest.TestCase):
         )
         self.assertEqual(answer, "SpendSmart test answer")
         app.invoke.assert_called_once()
-        payload, config = app.invoke.call_args.args
+        (payload,) = app.invoke.call_args.args
+        config = app.invoke.call_args.kwargs["config"]
         self.assertEqual(
             payload["messages"],
             [{"role": "user", "content": "Summarize my spending"}],
