@@ -1,101 +1,156 @@
-# SpendSmart – Personal Finance Agent
+# SpendSmart – Personal Finance Multi-Agent Assistant
 
-**An agentic AI concept for personal expense tracking, budget monitoring, anomaly detection, and savings recommendations.**
+**A multi-agent personal finance assistant for expense tracking, budget monitoring, anomaly detection, financial education, and savings recommendations.**
 
-SpendSmart is a proposed personal finance assistant that helps users understand where their money goes and make better day-to-day budgeting decisions. It combines an LLM with specialized tools that retrieve and analyze financial transaction data, evaluate budgets, detect unusual spending patterns, and generate understandable reports.
+SpendSmart uses a **LangGraph supervisor architecture**. A central supervisor routes each request to specialized finance agents, then combines their verified results into one response.
 
-> **Project scope:** This repository documents the agent design and assignment deliverables. It is a conceptual design, not a live banking application. No real financial accounts are connected and no transactions are executed.
+> **Project scope:** This is a local-data prototype. It reads an authorized CSV export and a read-only JSON budget. It does not connect to a bank, move money, execute payments, make purchases, or modify budgets.
 
-## Assignment deliverables
+## Multi-agent architecture
 
-1. **Use case:** SpendSmart personal finance assistant.
-2. **LLM and provider:** GPT-OSS-120B, developed by OpenAI and accessed through GroqCloud (`openai/gpt-oss-120b`).
-3. **Tools:** Seven proposed tools, each with a function name, typed inputs, typed outputs, and a description.
-4. **System prompt:** A complete instruction set defining the agent's role, workflow, tool-use rules, privacy boundaries, and response format.
+```text
+                         USER
+                           |
+                           v
+                 SpendSmart Supervisor
+                  (intent + routing)
+                           |
+       +-------------------+-------------------+
+       |          |        |        |           |
+       v          v        v        v           v
+  Transaction  Financial  Budget  Savings   Financial
+    Agent      Analysis   Agent   Agent     Education
+                 Agent                      Agent
+       |          |        |        |           |
+       +----------+--------+--------+-----------+
+                           |
+                           v
+                 Supervisor synthesizes
+                    verified findings
+                           |
+                           v
+                     USER RESPONSE
+```
+
+### Specialist responsibilities
+
+| Agent | Tools / responsibilities |
+|---|---|
+| Transaction Agent | `retrieve_transactions`, `categorize_transactions` |
+| Financial Analysis Agent | `calculate_financial_metrics`, `detect_spending_anomalies` |
+| Budget Agent | `evaluate_budget` |
+| Savings Agent | `generate_savings_plan` |
+| Financial Education Agent | Chroma-backed `search_budgeting_knowledge` |
+| Supervisor | Routes work, checks findings, and writes the final response |
+
+The original deterministic finance functions remain in `spendsmart_agent.py`. The multi-agent orchestration is implemented in `spendsmart_multi_agent.py`.
+
+## Course notebook concepts applied
+
+| Course concept | SpendSmart implementation |
+|---|---|
+| LangGraph `create_agent()` | Creates each specialist worker |
+| `create_supervisor()` | Creates the central coordinator and handoff tools |
+| `include_agent_name="inline"` | Makes worker messages visible in the shared trace |
+| `output_mode="full_history"` | Keeps worker tool calls and results available for debugging |
+| `InMemorySaver()` + `thread_id` | Keeps conversation state between turns in the same running process |
+| Groq Chat model | Uses GPT-OSS-120B through Groq for LangGraph agents |
+| Existing Chroma RAG | Supplies general budgeting education to the education specialist |
 
 ## Repository structure
 
 ```text
 SpendSmart-Personal-Finance-Agent/
-├── README.md
-├── docs/
-│   ├── 01_brainstorming_and_use_case.md
-│   ├── 02_llm_and_provider.md
-│   ├── 03_tool_specifications.md
-│   ├── 04_agent_workflow.md
-│   └── 05_system_prompt.md
-└── LICENSE
+├── spendsmart_agent.py           # Existing finance functions and Chroma RAG builder
+├── spendsmart_multi_agent.py     # LangGraph workers + supervisor
+├── requirements.txt
+├── .env.example
+├── data/
+│   ├── transactions.csv          # Fictional sample transactions
+│   └── budgets.json              # Example category limits
+├── knowledge/
+│   └── financial_guidance.md     # General budgeting knowledge
+└── docs/
 ```
 
-## Quick overview
+## Setup
 
-A user may ask:
+Use Python 3.10 or newer.
 
-> "I earn 6,000 EGP per month. Help me understand my spending and save 20% of my income."
+1. Create and activate a virtual environment.
 
-SpendSmart can retrieve the user's authorized transactions, categorize them, calculate spending metrics, compare expenses with budget limits, identify unusual activity, and suggest a realistic savings plan. It then explains its findings in a clear report.
+   **Windows PowerShell**
+   ```powershell
+   python -m venv .venv
+   .venv\Scripts\Activate.ps1
+   ```
 
-## Important design principles
+2. Install dependencies:
 
-- **Read-only by default:** the agent analyzes authorized data; it does not move money or make purchases.
-- **User approval:** it must ask before changing a budget, sharing a report, or triggering an external notification.
-- **Privacy:** it must never request passwords, PINs, or one-time verification codes.
-- **Honest analysis:** an unusual transaction is a possible anomaly, not proof of fraud.
-- **Traceable results:** calculations should come from tools and supplied data, not invented figures.
-- **Practical recommendations:** savings suggestions should be realistic and based on observed spending.
+   ```powershell
+   python -m pip install -r requirements.txt
+   ```
 
-## Detailed documentation
+3. Copy `.env.example` to `.env` and add a newly generated Groq API key. Never commit `.env`.
 
-- [Brainstorming and use case](docs/01_brainstorming_and_use_case.md)
-- [LLM and provider selection](docs/02_llm_and_provider.md)
-- [Tool specifications](docs/03_tool_specifications.md)
-- [Agent workflow](docs/04_agent_workflow.md)
-- [Complete system prompt](docs/05_system_prompt.md)
+4. Run a request:
 
-## Example scenario
+   ```powershell
+   python spendsmart_multi_agent.py "Analyze my spending from 2026-11-01 to 2026-11-18 and check my budget"
+   ```
 
-Assume a user has a monthly income of **6,000 EGP** and wants to save **20% (1,200 EGP)**. SpendSmart reviews the available transaction history, estimates the user's current savings rate, identifies categories with possible reductions, and proposes a budget. The 1,200 EGP target is treated as a goal to evaluate—not as a guaranteed outcome.
+Example savings request:
 
-## Status
+```powershell
+python spendsmart_multi_agent.py "I earn 6000 EGP monthly and want to save 20%. Analyze my spending from 2026-11-01 to 2026-11-18."
+```
 
-**Design/documentation prototype.** Implementation, integrations, authentication, and testing would be separate future phases.
+## Conversation memory
 
+The graph is compiled with LangGraph's `InMemorySaver`. Reuse the same `thread_id` when calling `run_spendsmart` in a long-running Python process to continue a conversation:
 
----
+```python
+from spendsmart_multi_agent import run_spendsmart
 
-## 5. LlamaIndex implementation
+print(run_spendsmart(
+    "Analyze my spending from 2026-11-01 to 2026-11-18.",
+    thread_id="user-session-1",
+))
+print(run_spendsmart(
+    "Which category used the most money?",
+    thread_id="user-session-1",
+))
+```
 
-The repository now also includes a runnable **LlamaIndex implementation prototype**, adapted from the supplied `02_llamaindex_agents` course notebook.
+A different thread ID starts a separate conversation. In-memory history is lost when the Python process restarts; use a persistent database checkpointer for a deployed application. Passing a thread ID to two separate one-shot CLI processes does not persist memory between those processes.
 
-### Framework concepts used
+## Testing the specialists
 
-| Course notebook concept | SpendSmart implementation |
-|---|---|
-| `HuggingFaceInferenceAPI` | Connects the agent to a Hugging Face-hosted inference model |
-| `ReActAgent` | Reasons about the request and selects tools |
-| `FunctionTool` | Exposes finance functions to the agent |
-| `SimpleDirectoryReader` | Loads financial education documents |
-| `HuggingFaceEmbedding` | Embeds the knowledge documents |
-| `ChromaVectorStore` | Persists document vectors locally |
-| `QueryEngineTool` | Lets the agent retrieve general budgeting guidance |
+Build and test the workers independently before testing the supervisor:
 
-### Added implementation files
+```python
+from spendsmart_multi_agent import build_agents, get_llm
 
-- `spendsmart_agent.py` — agent, finance tools, local CSV analysis, and RAG setup.
-- `requirements.txt` — Python dependencies aligned with the notebook's LlamaIndex package versions.
-- `.env.example` — safe configuration template; add your own token to a local `.env` file.
-- `data/transactions.csv` — fictional sample transactions for testing.
-- `data/budgets.json` — example monthly category limits.
-- `knowledge/financial_guidance.md` — sample knowledge source indexed by Chroma.
-- `docs/06_llamaindex_implementation.md` — setup instructions and explanation.
+workers = build_agents(get_llm())
+for worker in workers:
+    print(worker.name)
+```
 
-### Run locally
+Then build the supervisor and inspect its graph:
 
-1. Create and activate a Python virtual environment.
-2. Install dependencies: `pip install -r requirements.txt`.
-3. Copy `.env.example` to `.env` and add your own Hugging Face token.
-4. Run: `python spendsmart_agent.py "Analyze my November 2026 spending and help me save 20% of a 6000 EGP monthly income"`.
+```python
+from spendsmart_multi_agent import build_supervisor
 
-The default model follows the supplied notebook's Hugging Face example. If that model is not available through your account's Inference Providers, set `HF_LLM_MODEL` to an available model. The agent uses a ReAct loop, matching the notebook's explanation that this Hugging Face integration is not configured as a function-calling model by default.
+app = build_supervisor()
+print(app.get_graph().draw_mermaid())
+```
 
-**Prototype boundary:** this version reads a local CSV and JSON budget file only. It does not connect to a bank, transfer money, execute payments, or edit budgets. The sample transactions and budget values are fictional.
+## Safety and limitations
+
+- All personal transaction facts come from the local CSV export.
+- The budget JSON and source CSV are read-only to the agents.
+- Sample transactions and budget limits are fictional.
+- Anomaly detection flags items for review; it does not prove fraud.
+- Savings plans are estimates, not guarantees.
+- No bank connection, payment, transfer, purchase, or budget-editing capability is included.
+- Never request passwords, PINs, OTPs, or card security codes.
