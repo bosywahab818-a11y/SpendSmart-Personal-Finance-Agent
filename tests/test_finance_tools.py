@@ -28,7 +28,7 @@ class FinanceToolTests(unittest.TestCase):
             )
         self.assertEqual(result["transaction_income_total"], 6000.0)
         self.assertEqual(result["total_expenses"], 650.0)
-        self.assertEqual(result["remaining_balance"], 5400.0)
+        self.assertEqual(result["remaining_balance"], 5350.0)
         self.assertEqual(result["currency"], ["EGP"])
 
     def test_metrics_exclude_records_outside_period(self):
