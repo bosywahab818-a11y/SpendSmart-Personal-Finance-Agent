@@ -23,7 +23,6 @@ TRANSACTIONS_PATH = Path(os.getenv("TRANSACTIONS_PATH", ROOT / "data/transaction
 BUDGETS_PATH = Path(os.getenv("BUDGETS_PATH", ROOT / "data/budgets.json"))
 KNOWLEDGE_PATH = ROOT / "knowledge"
 CHROMA_PATH = Path(os.getenv("CHROMA_PATH", ROOT / ".chroma"))
-LLM_MODEL = os.getenv("HF_LLM_MODEL", "Qwen/Qwen2.5-Coder-32B-Instruct")
 EMBED_MODEL = os.getenv("HF_EMBED_MODEL", "BAAI/bge-small-en-v1.5")
 
 CATEGORY_RULES = {
