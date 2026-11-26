@@ -16,7 +16,8 @@ class FinanceToolTests(unittest.TestCase):
             "transaction_id,date,merchant,amount,description,transaction_type,currency\n"
             "1,2026-11-01,Employer,6000,Monthly salary,income,EGP\n"
             "2,2026-11-02,Supermarket,500,Groceries,expense,EGP\n"
-            "3,2026-11-03,Metro,100,Transport,expense,EGP\n",
+            "3,2026-11-03,Metro,100,Transport,expense,EGP\n"
+            "4,2026-11-03 23:45:00,Taxi,50,Late transport,expense,EGP\n",
             encoding="utf-8",
         )
 
@@ -36,7 +37,7 @@ class FinanceToolTests(unittest.TestCase):
                 spend.calculate_financial_metrics("2026-11-02", "2026-11-03")
             )
         self.assertEqual(result["transaction_income_total"], 0.0)
-        self.assertEqual(result["total_expenses"], 600.0)
+        self.assertEqual(result["total_expenses"], 650.0)
 
     def test_reverse_date_range_is_rejected(self):
         with self.assertRaises(ValueError):
