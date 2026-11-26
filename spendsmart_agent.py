@@ -50,7 +50,7 @@ def _load_transactions() -> pd.DataFrame:
     missing = required - set(df.columns)
     if missing:
         raise ValueError(f"CSV is missing required columns: {sorted(missing)}")
-    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    df["date"] = pd.to_datetime(df["date"], format="mixed", errors="coerce")
     df["amount"] = pd.to_numeric(df["amount"], errors="coerce")
     df = df.dropna(subset=["date", "amount"]).copy()
     df["transaction_type"] = df["transaction_type"].astype(str).str.lower()
