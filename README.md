@@ -1,101 +1,159 @@
-# SpendSmart – Personal Finance Agent
+# SpendSmart – Multi-Agent Personal Finance Assistant
 
-**An agentic AI concept for personal expense tracking, budget monitoring, anomaly detection, and savings recommendations.**
+**A supervisor-based AI assistant for expense analysis, budget monitoring, anomaly review, financial education, and savings recommendations.**
 
-SpendSmart is a proposed personal finance assistant that helps users understand where their money goes and make better day-to-day budgeting decisions. It combines an LLM with specialized tools that retrieve and analyze financial transaction data, evaluate budgets, detect unusual spending patterns, and generate understandable reports.
+SpendSmart uses GPT-OSS-120B through GroqCloud. A central supervisor delegates requests to focused finance specialists, each equipped with only the tools needed for its responsibility.
 
-> **Project scope:** This repository documents the agent design and assignment deliverables. It is a conceptual design, not a live banking application. No real financial accounts are connected and no transactions are executed.
+> **Prototype boundary:** SpendSmart analyzes a local CSV export and local JSON budget file. It does not connect to a bank, move money, execute payments, make purchases, or modify persistent budgets.
 
-## Assignment deliverables
+## Multi-agent architecture
 
-1. **Use case:** SpendSmart personal finance assistant.
-2. **LLM and provider:** GPT-OSS-120B, developed by OpenAI and accessed through GroqCloud (`openai/gpt-oss-120b`).
-3. **Tools:** Seven proposed tools, each with a function name, typed inputs, typed outputs, and a description.
-4. **System prompt:** A complete instruction set defining the agent's role, workflow, tool-use rules, privacy boundaries, and response format.
+```text
+                         USER
+                           |
+                           v
+                 SPENDSMART SUPERVISOR
+                 (GPT-OSS-120B / Groq)
+                           |
+          +----------------+-------------------+
+          |                |                   |
+          v                v                   v
+   TRANSACTION        BUDGET & RISK        SAVINGS COACH
+    ANALYST             ANALYST
+          |                |                   |
+   - retrieve         - evaluate          - generate
+     transactions       budget              savings plan
+   - categorize      - detect anomalies
+   - financial
+     metrics
+   - financial
+     report
+          |
+          +-------------------+
+                              |
+                              v
+                   FINANCIAL KNOWLEDGE EXPERT
+                              |
+                       - budgeting_knowledge
+                         (LlamaIndex RAG
+                          + Chroma)
+                              |
+                              v
+                  SUPERVISOR SYNTHESIS
+                              |
+                              v
+                       USER RESPONSE
+```
+
+The supervisor decides which specialist to call, gives it a focused task, receives its result, and combines the findings. Workers report back to the supervisor; they do not call one another directly.
+
+## Specialists and tools
+
+| Agent | Responsibilities | Tools |
+|---|---|---|
+| `transaction_analyst` | Transaction history, categorization, totals, financial reports | `retrieve_transactions`, `categorize_transactions`, `calculate_financial_metrics`, `generate_financial_report` |
+| `budget_risk_analyst` | Budget comparison and unusual-spending review | `evaluate_budget`, `detect_spending_anomalies` |
+| `savings_coach` | Savings target evaluation and practical savings suggestions | `generate_savings_plan` |
+| `financial_knowledge_expert` | General financial education and budgeting guidance | `budgeting_knowledge` (LlamaIndex RAG / Chroma) |
+
+The seven existing finance functions are reused; the architecture change is in orchestration, not a rewrite of the underlying calculations.
+
+## Technology stack
+
+- **LLM:** OpenAI GPT-OSS-120B via GroqCloud (`openai/gpt-oss-120b`).
+- **Multi-agent orchestration:** LangChain `create_agent` + `langgraph-supervisor`.
+- **Conversation state:** LangGraph `InMemorySaver` checkpointer keyed by `thread_id`.
+- **Finance data:** pandas, local CSV transactions, and read-only JSON budgets.
+- **Financial knowledge:** LlamaIndex query engine, Hugging Face embeddings, and Chroma vector store.
 
 ## Repository structure
 
 ```text
 SpendSmart-Personal-Finance-Agent/
-├── README.md
-├── docs/
-│   ├── 01_brainstorming_and_use_case.md
-│   ├── 02_llm_and_provider.md
-│   ├── 03_tool_specifications.md
-│   ├── 04_agent_workflow.md
-│   └── 05_system_prompt.md
-└── LICENSE
+├── spendsmart_agent.py          # Finance tools, RAG, supervisor and workers
+├── requirements.txt
+├── .env.example
+├── data/
+│   ├── transactions.csv         # Fictional sample data
+│   └── budgets.json             # Example category limits
+├── knowledge/
+│   └── financial_guidance.md
+└── docs/
+    ├── 01_brainstorming_and_use_case.md
+    ├── 02_llm_and_provider.md
+    ├── 03_tool_specifications.md
+    ├── 04_agent_workflow.md
+    ├── 05_system_prompt.md
+    ├── 06_llamaindex_implementation.md
+    └── 07_multi_agent_implementation.md
 ```
 
-## Quick overview
+## Setup
 
-A user may ask:
+Use Python 3.10 or newer.
 
-> "I earn 6,000 EGP per month. Help me understand my spending and save 20% of my income."
+```bash
+python -m venv .venv
+```
 
-SpendSmart can retrieve the user's authorized transactions, categorize them, calculate spending metrics, compare expenses with budget limits, identify unusual activity, and suggest a realistic savings plan. It then explains its findings in a clear report.
+Windows PowerShell:
 
-## Important design principles
+```powershell
+.venv\Scripts\Activate.ps1
+```
 
-- **Read-only by default:** the agent analyzes authorized data; it does not move money or make purchases.
-- **User approval:** it must ask before changing a budget, sharing a report, or triggering an external notification.
-- **Privacy:** it must never request passwords, PINs, or one-time verification codes.
-- **Honest analysis:** an unusual transaction is a possible anomaly, not proof of fraud.
-- **Traceable results:** calculations should come from tools and supplied data, not invented figures.
-- **Practical recommendations:** savings suggestions should be realistic and based on observed spending.
+macOS/Linux:
 
-## Detailed documentation
+```bash
+source .venv/bin/activate
+```
 
-- [Brainstorming and use case](docs/01_brainstorming_and_use_case.md)
-- [LLM and provider selection](docs/02_llm_and_provider.md)
-- [Tool specifications](docs/03_tool_specifications.md)
-- [Agent workflow](docs/04_agent_workflow.md)
-- [Complete system prompt](docs/05_system_prompt.md)
+Install dependencies:
 
-## Example scenario
+```bash
+pip install -r requirements.txt
+```
 
-Assume a user has a monthly income of **6,000 EGP** and wants to save **20% (1,200 EGP)**. SpendSmart reviews the available transaction history, estimates the user's current savings rate, identifies categories with possible reductions, and proposes a budget. The 1,200 EGP target is treated as a goal to evaluate—not as a guaranteed outcome.
+Create a local `.env` file from `.env.example` and add a **new** Groq API key:
 
-## Status
+```dotenv
+GROQ_API_KEY=your_groq_api_key
+GROQ_MODEL=openai/gpt-oss-120b
+HF_EMBED_MODEL=BAAI/bge-small-en-v1.5
+```
 
-**Design/documentation prototype.** Implementation, integrations, authentication, and testing would be separate future phases.
+Never commit `.env`, API keys, or notebook secrets. The RAG embedding model is downloaded when the knowledge index is first initialized.
 
+## Run
 
----
+```bash
+python spendsmart_agent.py "Analyze my November 2026 spending, check my budget, and help me save 20% of a 6000 EGP monthly income" --thread-id user-session-1
+```
 
-## 5. LlamaIndex implementation
+For a multi-turn session, reuse the same `--thread-id`. Use a different thread ID for each user/conversation. The command-line entry point creates the supervisor once for the run; applications that need multiple turns in one process should build the app once and call `run_spendsmart(query, thread_id, app)` repeatedly.
 
-The repository now also includes a runnable **LlamaIndex implementation prototype**, adapted from the supplied `02_llamaindex_agents` course notebook.
+## Example routing
 
-### Framework concepts used
+- "Show my expenses last month" → transaction analyst.
+- "Did I exceed my food budget?" → budget and risk analyst.
+- "Was anything unusual in November?" → budget and risk analyst.
+- "Help me save 20% of my 6,000 EGP income" → savings coach, with transaction analysis when needed.
+- "Explain the 50/30/20 budgeting rule" → financial knowledge expert.
+- "Give me a complete monthly review" → supervisor coordinates the relevant specialists and synthesizes their findings.
 
-| Course notebook concept | SpendSmart implementation |
-|---|---|
-| `HuggingFaceInferenceAPI` | Connects the agent to a Hugging Face-hosted inference model |
-| `ReActAgent` | Reasons about the request and selects tools |
-| `FunctionTool` | Exposes finance functions to the agent |
-| `SimpleDirectoryReader` | Loads financial education documents |
-| `HuggingFaceEmbedding` | Embeds the knowledge documents |
-| `ChromaVectorStore` | Persists document vectors locally |
-| `QueryEngineTool` | Lets the agent retrieve general budgeting guidance |
+## Design and safety principles
 
-### Added implementation files
+- **Read-only by default:** local transaction and budget files are not modified.
+- **Privacy:** never request passwords, PINs, OTPs, recovery codes, or full payment-card security details.
+- **Honest analysis:** calculations and personal-data claims must come from finance tools; never invent records or balances.
+- **Anomaly caution:** an anomaly is a signal for user review, not proof of fraud.
+- **Human approval:** future budget changes, report sharing, notifications, or new data-source permissions require explicit approval.
+- **Currency and period awareness:** do not combine currencies or present partial-period data as a complete month.
+- **Practical recommendations:** protect essential expenses and label savings projections as estimates, not guarantees.
 
-- `spendsmart_agent.py` — agent, finance tools, local CSV analysis, and RAG setup.
-- `requirements.txt` — Python dependencies aligned with the notebook's LlamaIndex package versions.
-- `.env.example` — safe configuration template; add your own token to a local `.env` file.
-- `data/transactions.csv` — fictional sample transactions for testing.
-- `data/budgets.json` — example monthly category limits.
-- `knowledge/financial_guidance.md` — sample knowledge source indexed by Chroma.
-- `docs/06_llamaindex_implementation.md` — setup instructions and explanation.
+## Limitations
 
-### Run locally
-
-1. Create and activate a Python virtual environment.
-2. Install dependencies: `pip install -r requirements.txt`.
-3. Copy `.env.example` to `.env` and add your own Hugging Face token.
-4. Run: `python spendsmart_agent.py "Analyze my November 2026 spending and help me save 20% of a 6000 EGP monthly income"`.
-
-The default model follows the supplied notebook's Hugging Face example. If that model is not available through your account's Inference Providers, set `HF_LLM_MODEL` to an available model. The agent uses a ReAct loop, matching the notebook's explanation that this Hugging Face integration is not configured as a function-calling model by default.
-
-**Prototype boundary:** this version reads a local CSV and JSON budget file only. It does not connect to a bank, transfer money, execute payments, or edit budgets. The sample transactions and budget values are fictional.
+- Sample transactions and budget limits are fictional.
+- The current data source is a local CSV, not a live bank connection.
+- `InMemorySaver` stores conversation history in RAM and loses it when the process/kernel restarts. A persistent database checkpointer is needed for production.
+- The sample is a prototype, not professional investment, tax, legal, or banking advice.

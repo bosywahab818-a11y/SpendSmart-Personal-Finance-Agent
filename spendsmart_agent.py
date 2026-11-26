@@ -23,7 +23,6 @@ TRANSACTIONS_PATH = Path(os.getenv("TRANSACTIONS_PATH", ROOT / "data/transaction
 BUDGETS_PATH = Path(os.getenv("BUDGETS_PATH", ROOT / "data/budgets.json"))
 KNOWLEDGE_PATH = ROOT / "knowledge"
 CHROMA_PATH = Path(os.getenv("CHROMA_PATH", ROOT / ".chroma"))
-LLM_MODEL = os.getenv("HF_LLM_MODEL", "Qwen/Qwen2.5-Coder-32B-Instruct")
 EMBED_MODEL = os.getenv("HF_EMBED_MODEL", "BAAI/bge-small-en-v1.5")
 
 CATEGORY_RULES = {
@@ -280,19 +279,21 @@ def generate_financial_report(start_date: str, end_date: str) -> str:
 
 
 def build_knowledge_tool(llm):
-    """Build a Chroma-backed LlamaIndex RAG query tool for general budgeting guidance."""
+    """Build a Chroma-backed LlamaIndex RAG tool exposed to LangChain."""
     import chromadb
     from llama_index.core import SimpleDirectoryReader, VectorStoreIndex
-    from llama_index.core.tools import QueryEngineTool
     from llama_index.embeddings.huggingface import HuggingFaceEmbedding
     from llama_index.vector_stores.chroma import ChromaVectorStore
+    from langchain_core.tools import Tool
 
     if not KNOWLEDGE_PATH.exists() or not list(KNOWLEDGE_PATH.glob("*.md")):
         raise FileNotFoundError("Add at least one .md file to the knowledge/ directory.")
+
     client = chromadb.PersistentClient(path=str(CHROMA_PATH))
     collection = client.get_or_create_collection("spendsmart_knowledge")
     vector_store = ChromaVectorStore(chroma_collection=collection)
     embed_model = HuggingFaceEmbedding(model_name=EMBED_MODEL)
+
     if collection.count() == 0:
         docs = SimpleDirectoryReader(input_dir=str(KNOWLEDGE_PATH)).load_data()
         index = VectorStoreIndex.from_documents(
@@ -302,80 +303,191 @@ def build_knowledge_tool(llm):
         index = VectorStoreIndex.from_vector_store(
             vector_store, embed_model=embed_model
         )
-    query_engine = index.as_query_engine(
-    llm=llm,
-    similarity_top_k=3
-)
-    return QueryEngineTool.from_defaults(
-        query_engine=query_engine,
+
+    query_engine = index.as_query_engine(llm=llm, similarity_top_k=3)
+
+    def search_budgeting_knowledge(query: str) -> str:
+        """Retrieve general budgeting and savings education from the local knowledge base."""
+        return str(query_engine.query(query))
+
+    return Tool(
         name="budgeting_knowledge",
+        func=search_budgeting_knowledge,
         description=(
-            "Searches general budgeting and savings guidance. Use this for general "
-            "financial education, not as a source of the user's personal transaction facts."
+            "Search general budgeting, savings, and personal-finance education. "
+            "Use for general guidance, never as a source of the user's transaction facts."
         ),
-        return_direct=False,
     )
 
 
 def build_agent():
-    """Create the LlamaIndex ReAct agent using the notebook's Hugging Face pattern."""
-    from llama_index.core.agent.workflow import ReActAgent
-    from llama_index.core.tools import FunctionTool
+    """Build the SpendSmart supervisor and its specialised finance workers."""
+    from langchain.agents import create_agent
+    from langchain_groq import ChatGroq
+    from langgraph.checkpoint.memory import InMemorySaver
+    from langgraph_supervisor import create_supervisor
     from llama_index.llms.groq import Groq
 
     groq_api_key = os.getenv("GROQ_API_KEY")
-
     if not groq_api_key:
-        raise EnvironmentError(
-            "Set GROQ_API_KEY in your .env file first."
-        )
+        raise EnvironmentError("Set GROQ_API_KEY in your .env file first.")
 
-    llm = Groq(
-        model="openai/gpt-oss-120b",
+    model_name = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
+    model = ChatGroq(
+        model=model_name,
         api_key=groq_api_key,
-        temperature=0.2,
+        temperature=0,
     )
-    functions = [
-        retrieve_transactions,
-        categorize_transactions,
-        calculate_financial_metrics,
-        detect_spending_anomalies,
-        evaluate_budget,
-        generate_savings_plan,
-        generate_financial_report,
-    ]
-    tools = [FunctionTool.from_defaults(fn=fn) for fn in functions]
-    tools.append(build_knowledge_tool(llm))
 
-    system_prompt = """
-You are SpendSmart, a careful personal finance analysis assistant.
-Use tools for all claims about the user's transaction data and calculations.
-The available transaction source is a local CSV export; never claim to access a bank.
-Use ISO dates (YYYY-MM-DD) when calling tools. Ask a concise question if the period,
-income, or savings target is essential and missing. Select only the tools needed.
-The budgeting_knowledge tool contains general educational guidance, not personal data.
-Distinguish actual transaction totals from user-reported income and estimates.
-An anomaly is not proof of fraud. Never invent records, balances, or tool results.
-Never ask for passwords, PINs, OTPs, or card security codes. Never initiate payments,
-transfers, purchases, or modify budget files. Treat the budget file as read-only.
-State the date range, currency, and data limitations. Be non-judgmental and practical.
+    # LlamaIndex remains responsible for the RAG query engine; LangChain
+    # exposes that query engine as a tool to the knowledge specialist.
+    rag_llm = Groq(
+        model=model_name,
+        api_key=groq_api_key,
+        temperature=0.1,
+    )
+    knowledge_tool = build_knowledge_tool(rag_llm)
+
+    transaction_agent = create_agent(
+        model,
+        tools=[
+            retrieve_transactions,
+            categorize_transactions,
+            calculate_financial_metrics,
+            generate_financial_report,
+        ],
+        name="transaction_analyst",
+        system_prompt=(
+            "You are SpendSmart's transaction analyst. Handle requests about "
+            "transaction history, categorization, income, expenses, balances, "
+            "savings rates, and consolidated financial reports. Use the supplied "
+            "finance tools for every personal-data claim and calculation. "
+            "Use ISO dates (YYYY-MM-DD). Ask for a missing essential date range; "
+            "never invent transactions, currencies, or totals. The data source "
+            "is a local CSV export, not a connected bank."
+        ),
+    )
+
+    budget_risk_agent = create_agent(
+        model,
+        tools=[evaluate_budget, detect_spending_anomalies],
+        name="budget_risk_analyst",
+        system_prompt=(
+            "You are SpendSmart's budget and risk analyst. Compare spending with "
+            "configured category limits using evaluate_budget. Use "
+            "detect_spending_anomalies only when the requested period and suitable "
+            "historical data are available. An anomaly is a review signal, not "
+            "proof of fraud. Never label a transaction fraudulent or unauthorized. "
+            "Use ISO dates and report missing history or unconfigured budgets."
+        ),
+    )
+
+    savings_agent = create_agent(
+        model,
+        tools=[generate_savings_plan],
+        name="savings_coach",
+        system_prompt=(
+            "You are SpendSmart's savings coach. Create realistic, non-judgmental "
+            "savings recommendations using generate_savings_plan. Confirm that "
+            "monthly income, target savings rate, and date range are available. "
+            "Protect essential spending and clearly label projections as estimates, "
+            "not guarantees. Never invent financial figures."
+        ),
+    )
+
+    knowledge_agent = create_agent(
+        model,
+        tools=[knowledge_tool],
+        name="financial_knowledge_expert",
+        system_prompt=(
+            "You are SpendSmart's financial education specialist. Use "
+            "budgeting_knowledge for general budgeting and savings concepts. "
+            "Do not use educational documents to answer questions about the user's "
+            "transactions, balance, or personal budget. Clearly distinguish "
+            "general guidance from personalized analysis."
+        ),
+    )
+
+    supervisor_prompt = """
+You are SpendSmart's central supervisor. The user communicates only with you.
+Coordinate these specialists:
+- transaction_analyst: transaction retrieval, categorization, financial metrics,
+  and consolidated reports.
+- budget_risk_analyst: configured budget comparisons and possible spending anomalies.
+- savings_coach: realistic savings plans and target evaluation.
+- financial_knowledge_expert: general financial education from the RAG knowledge base.
+
+Routing and workflow rules:
+1. Identify the user's goal, date range, currency, and required level of detail.
+2. Delegate only the tasks needed; do not call every worker for every request.
+3. For a comprehensive spending review, obtain transaction-derived findings first,
+   then request budget/risk analysis when relevant, then a savings plan if the user
+   supplied an income and savings goal.
+4. For general budgeting concepts, use financial_knowledge_expert.
+5. Give workers clear, self-contained tasks with the date range and relevant
+   assumptions. Use their returned findings; do not invent missing data.
+6. If an essential detail is missing, ask the user one concise clarification question.
+7. Workers report back to you. You are responsible for synthesizing their findings
+   into one coherent answer and identifying disagreements or missing information.
+8. Keep the system read-only. Never authorize payments, transfers, purchases,
+   budget edits, external sharing, or notifications.
+9. State the period, currency, data coverage, and limitations. An anomaly is not
+   proof of fraud. Separate observed facts from estimates and recommendations.
+10. When the specialists have completed the required work, answer the user directly.
 """
-    return ReActAgent(tools=tools, llm=llm, system_prompt=system_prompt)
+
+    workflow = create_supervisor(
+        [transaction_agent, budget_risk_agent, savings_agent, knowledge_agent],
+        model=model,
+        prompt=supervisor_prompt,
+        supervisor_name="spendsmart_supervisor",
+        include_agent_name="inline",
+        output_mode="full_history",
+    )
+
+    # The checkpointer stores conversation state by thread_id. Use a distinct,
+    # non-guessable thread_id per authenticated user in a deployed application.
+    memory = InMemorySaver()
+    return workflow.compile(checkpointer=memory)
 
 
-async def main() -> None:
-    parser = argparse.ArgumentParser(description="Ask the SpendSmart LlamaIndex agent.")
+def run_spendsmart(query: str, thread_id: str = "default", app=None) -> str:
+    """Run one turn through the supervisor, retaining memory for this thread."""
+    if app is None:
+        app = build_agent()
+
+    config = {
+        "configurable": {"thread_id": thread_id},
+        "recursion_limit": 60,
+    }
+    result = app.invoke(
+        {"messages": [{"role": "user", "content": query}]},
+        config=config,
+    )
+    final_message = result["messages"][-1]
+    return str(final_message.content)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Ask the SpendSmart multi-agent personal finance assistant."
+    )
     parser.add_argument("query", nargs="*", help="Natural-language finance question")
+    parser.add_argument(
+        "--thread-id",
+        default="default",
+        help="Conversation identifier used by the in-memory checkpointer",
+    )
     args = parser.parse_args()
+
     prompt = " ".join(args.query).strip() or (
         "Analyze November 2026 spending, check the configured budget, "
         "and suggest ways to save 20% of a 6000 EGP monthly income."
     )
-    agent = build_agent()
-    response = await agent.run(user_msg=prompt)
-    print(response)
+    app = build_agent()
+    answer = run_spendsmart(prompt, thread_id=args.thread_id, app=app)
+    print(answer)
 
 
 if __name__ == "__main__":
-    import asyncio
-    asyncio.run(main())
+    main()
