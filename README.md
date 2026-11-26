@@ -52,7 +52,7 @@ The original deterministic finance functions remain in `spendsmart_agent.py`. Th
 | LangGraph `create_agent()` | Creates each specialist worker |
 | `create_supervisor()` | Creates the central coordinator and handoff tools |
 | `include_agent_name="inline"` | Makes worker messages visible in the shared trace |
-| `output_mode="full_history"` | Keeps worker tool calls and results available for debugging |
+| `output_mode="last_message"` | Returns the supervisor final response as the user-facing output |
 | `InMemorySaver()` + `thread_id` | Keeps conversation state between turns in the same running process |
 | Groq Chat model | Uses GPT-OSS-120B through Groq for LangGraph agents |
 | Existing Chroma RAG | Supplies general budgeting education to the education specialist |

@@ -45,7 +45,7 @@ Each worker is created with LangChain's `create_agent()` and a unique name. The 
 
 The supervisor prompt describes each specialist's domain, dependencies and safety boundaries. It instructs the supervisor to delegate one task at a time, wait for the worker's result, and synthesize only verified findings.
 
-`include_agent_name="inline"` makes worker authors visible in the shared trace. `output_mode="full_history"` retains worker messages and tool activity for inspection while developing. After debugging, consider `last_message` if the shared history becomes too large.
+`include_agent_name="inline"` makes worker authors visible in the shared trace. `output_mode="last_message"` returns the supervisor final response as the user-facing output, keeping the response concise.
 
 ## 7.5 Memory
 
